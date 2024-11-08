@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# WordPress Installation Script for Ubuntu 24.04 with Nginx
+# WordPress Installation Script for Ubuntu 24.04 with Nginx and Redis
 
 # Functions
 generate_random_password() {
@@ -44,9 +44,21 @@ sudo systemctl start nginx
 sudo systemctl enable nginx
 sudo systemctl status nginx --no-pager
 
+# Configure Gzip compression in nginx.conf within the http {} section
+echo "Configuring Gzip compression in Nginx..."
+sudo sed -i '/http {/a \
+    # Gzip configuration\n\
+    gzip on;\n\
+    gzip_vary on;\n\
+    gzip_proxied any;\n\
+    gzip_comp_level 6;\n\
+    gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript application/x-javascript application/x-font-ttf font/opentype image/svg+xml image/x-icon;\n\
+    gzip_min_length 256;\n\
+    gzip_buffers 16 8k;\n' /etc/nginx/nginx.conf
+
 # Step 3: Install PHP and required extensions
 echo "Installing PHP and extensions..."
-sudo apt install php php-cli php-common php-imap php-fpm php-snmp php-xml php-zip php-mbstring php-curl php-mysqli php-gd php-intl unzip vim -y
+sudo apt install php php-cli php-common php-imap php-fpm php-snmp php-xml php-zip php-mbstring php-curl php-mysqli php-gd php-intl php-redis unzip vim -y
 sudo apt purge apache2 -y
 php -v
 
@@ -105,7 +117,25 @@ sudo sed -i "s/database_name_here/$DB_NAME/" $WORDPRESS_PATH/wp-config.php
 sudo sed -i "s/username_here/$DB_USER/" $WORDPRESS_PATH/wp-config.php
 sudo sed -i "s/password_here/$DB_PASSWORD/" $WORDPRESS_PATH/wp-config.php
 
-# Step 7: Create Nginx Server Block for WordPress with IP alias
+# Step 7: Install Redis
+echo "Installing Redis..."
+sudo apt install redis-server -y
+sudo systemctl start redis-server
+sudo systemctl enable redis-server
+
+# Configure Redis in WordPress wp-config.php
+echo "Configuring Redis in wp-config.php..."
+cat <<EOL >> $WORDPRESS_PATH/wp-config.php
+
+// Redis configuration
+define( 'WP_REDIS_HOST', '127.0.0.1' );
+define( 'WP_REDIS_PORT', 6379 );
+define( 'WP_CACHE_KEY_SALT', '$DOMAIN_NAME:' );
+define( 'WP_REDIS_DATABASE', 0 );
+define( 'WP_CACHE', true );
+EOL
+
+# Step 8: Create Nginx Server Block for WordPress with IP alias
 echo "Creating Nginx server block..."
 sudo tee $NGINX_CONF > /dev/null <<EOL
 server {
@@ -136,7 +166,7 @@ server {
 }
 EOL
 
-# Step 8: Enable the WordPress site in Nginx
+# Step 9: Enable the WordPress site in Nginx
 echo "Enabling WordPress Nginx configuration..."
 sudo ln -s $NGINX_CONF /etc/nginx/sites-enabled/
 
@@ -149,4 +179,4 @@ echo "Cleaning up unused packages and cache..."
 sudo apt autoremove -y
 sudo apt autoclean -y
 
-echo "WordPress installation completed successfully!"
+echo "WordPress installation with Redis and Gzip compression completed successfully!"
